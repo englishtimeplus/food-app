@@ -30,21 +30,21 @@ npm run dev
 
 ## Routes
 
-| Route | Description |
-|-------|-------------|
-| `/` | Customer menu — product cards, cart, like/share |
-| `/order` | Order form with options for kimchi/stew items |
-| `/order/success?id=` | Order confirmation |
-| `/admin` | Admin dashboard (redirects to orders) |
-| `/admin/users` | User CRUD + CSV export |
-| `/admin/products` | Product CRUD + CSV export |
-| `/admin/orders` | Order management + status + CSV export |
+| Route                | Description                                     |
+| -------------------- | ----------------------------------------------- |
+| `/`                  | Customer menu — product cards, cart, like/share |
+| `/order`             | Order form with options for kimchi/stew items   |
+| `/order/success?id=` | Order confirmation                              |
+| `/admin`             | Admin dashboard (redirects to orders)           |
+| `/admin/users`       | User CRUD + CSV export                          |
+| `/admin/products`    | Product CRUD + CSV export                       |
+| `/admin/orders`      | Order management + status + CSV export          |
 
 ## Deploy on Vercel
 
 1. Push to GitHub and import the project in Vercel.
 2. Add `DATABASE_URL` in Project Settings → Environment Variables.
-3. Deploy.
+3. Deploy..
 
 ## Tech stack
 
