@@ -9,8 +9,9 @@ import type { Product } from "@/lib/types";
 import { formatPeso } from "@/lib/format";
 import {
   formatProductPrice,
-  getWeightPrice,
-  productNeedsWeightOption,
+  getDefaultOptionLabel,
+  getOptionPrice,
+  productHasOptions,
 } from "@/lib/product-options";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,12 +20,15 @@ import { useCart } from "./cart-context";
 export function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart();
   const [liked, setLiked] = useState(false);
-  const hasWeight = productNeedsWeightOption(product);
-  const price = hasWeight ? getWeightPrice("500g") : parseFloat(product.price);
+  const hasOptions = productHasOptions(product);
+  const defaultLabel = getDefaultOptionLabel(product);
+  const price = hasOptions
+    ? getOptionPrice(product, defaultLabel)
+    : parseFloat(product.price);
 
   const cartPayload = {
     productId: product.id,
-    name: hasWeight ? `${product.name} (500g)` : product.name,
+    name: hasOptions ? `${product.name} (${defaultLabel})` : product.name,
     price,
     imageUrl: product.image_url,
   };

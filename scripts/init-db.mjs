@@ -57,6 +57,23 @@ await sql`
 `;
 
 await sql`
+  CREATE TABLE IF NOT EXISTS product_options (
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  )
+`;
+
+const DEFAULT_WEIGHT_OPTIONS = [
+  { label: "500g", price: 200 },
+  { label: "750g", price: 300 },
+  { label: "1000g", price: 400 },
+];
+const PRODUCTS_WITH_WEIGHT_OPTIONS = new Set(["Kimchi", "Kimchi stew"]);
+
+await sql`
   CREATE TABLE IF NOT EXISTS food_orders (
     id SERIAL PRIMARY KEY,
     user_name TEXT NOT NULL,
@@ -80,10 +97,20 @@ await sql`DELETE FROM food_order_items`;
 await sql`DELETE FROM products`;
 
 for (const item of CLUB_MENU) {
-  await sql`
+  const inserted = await sql`
     INSERT INTO products (name, image_url, price, category)
     VALUES (${item.name}, ${item.image_url}, ${item.price}, ${item.category})
+    RETURNING id
   `;
+  if (PRODUCTS_WITH_WEIGHT_OPTIONS.has(item.name)) {
+    for (let i = 0; i < DEFAULT_WEIGHT_OPTIONS.length; i++) {
+      const opt = DEFAULT_WEIGHT_OPTIONS[i];
+      await sql`
+        INSERT INTO product_options (product_id, label, price, sort_order)
+        VALUES (${inserted[0].id}, ${opt.label}, ${opt.price}, ${i})
+      `;
+    }
+  }
 }
 
 await sql`

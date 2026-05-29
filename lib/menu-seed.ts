@@ -45,3 +45,12 @@ export const CLUB_MENU = [
     image_url: "https://images.unsplash.com/photo-1529193591184-b1d58069ec66?w=400",
   },
 ] as const;
+
+/** Default weight options for products that support 용량 선택 */
+export const DEFAULT_WEIGHT_OPTIONS = [
+  { label: "500g", price: 200 },
+  { label: "750g", price: 300 },
+  { label: "1000g", price: 400 },
+] as const;
+
+export const PRODUCTS_WITH_WEIGHT_OPTIONS = new Set(["Kimchi", "Kimchi stew"]);

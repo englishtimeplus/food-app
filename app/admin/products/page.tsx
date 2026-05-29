@@ -1,7 +1,9 @@
+import { ensureDatabase } from "@/actions/db-init";
 import { getProducts } from "@/actions/products";
 import { ProductsManager } from "@/components/admin/products-manager";
 
 export default async function AdminProductsPage() {
+  await ensureDatabase();
   const products = await getProducts();
 
   return (

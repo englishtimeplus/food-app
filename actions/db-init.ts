@@ -1,7 +1,12 @@
 "use server";
 
 import { getSql } from "@/lib/db";
-import { CLUB_MENU, MENU_SEED_VERSION } from "@/lib/menu-seed";
+import {
+  CLUB_MENU,
+  DEFAULT_WEIGHT_OPTIONS,
+  MENU_SEED_VERSION,
+  PRODUCTS_WITH_WEIGHT_OPTIONS,
+} from "@/lib/menu-seed";
 
 async function syncClubMenu() {
   const sql = getSql();
@@ -9,10 +14,20 @@ async function syncClubMenu() {
   await sql`DELETE FROM products`;
 
   for (const item of CLUB_MENU) {
-    await sql`
+    const inserted = await sql`
       INSERT INTO products (name, image_url, price, category)
       VALUES (${item.name}, ${item.image_url}, ${item.price}, ${item.category})
+      RETURNING id
     `;
+    if (PRODUCTS_WITH_WEIGHT_OPTIONS.has(item.name)) {
+      for (let i = 0; i < DEFAULT_WEIGHT_OPTIONS.length; i++) {
+        const opt = DEFAULT_WEIGHT_OPTIONS[i];
+        await sql`
+          INSERT INTO product_options (product_id, label, price, sort_order)
+          VALUES (${inserted[0].id}, ${opt.label}, ${opt.price}, ${i})
+        `;
+      }
+    }
   }
 
   await sql`
@@ -53,6 +68,16 @@ export async function ensureDatabase() {
   `;
 
   await sql`
+    CREATE TABLE IF NOT EXISTS product_options (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      label TEXT NOT NULL,
+      price NUMERIC(10, 2) NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )
+  `;
+
+  await sql`
     CREATE TABLE IF NOT EXISTS food_orders (
       id SERIAL PRIMARY KEY,
       user_name TEXT NOT NULL,
@@ -87,5 +112,29 @@ export async function ensureDatabase() {
   const currentVersion = versionRow[0]?.value ? parseInt(versionRow[0].value, 10) : 0;
   if (currentVersion !== MENU_SEED_VERSION) {
     await syncClubMenu();
+  } else {
+    await seedMissingProductOptions();
+  }
+}
+
+async function seedMissingProductOptions() {
+  const sql = getSql();
+  for (const name of PRODUCTS_WITH_WEIGHT_OPTIONS) {
+    const rows = await sql`
+      SELECT p.id
+      FROM products p
+      WHERE p.name = ${name}
+        AND NOT EXISTS (SELECT 1 FROM product_options o WHERE o.product_id = p.id)
+      LIMIT 1
+    `;
+    if (rows.length === 0) continue;
+    const productId = rows[0].id as number;
+    for (let i = 0; i < DEFAULT_WEIGHT_OPTIONS.length; i++) {
+      const opt = DEFAULT_WEIGHT_OPTIONS[i];
+      await sql`
+        INSERT INTO product_options (product_id, label, price, sort_order)
+        VALUES (${productId}, ${opt.label}, ${opt.price}, ${i})
+      `;
+    }
   }
 }

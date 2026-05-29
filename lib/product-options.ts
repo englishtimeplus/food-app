@@ -1,33 +1,56 @@
-import type { Product } from "./types";
+import type { Product, ProductOption } from "./types";
 import { formatPeso } from "./format";
 
-export function productNeedsWeightOption(
-  product: Pick<Product, "name" | "category">
-): boolean {
-  const n = product.name.toLowerCase().trim();
-  return n === "kimchi" || n === "kimchi stew";
+export function productHasOptions(product: Pick<Product, "options">): boolean {
+  return (product.options?.length ?? 0) > 0;
 }
 
-/** @deprecated use productNeedsWeightOption */
-export function productNeedsOption(product: Pick<Product, "name" | "category">): boolean {
-  return productNeedsWeightOption(product);
+/** @deprecated use productHasOptions */
+export function productNeedsWeightOption(product: Pick<Product, "options">): boolean {
+  return productHasOptions(product);
 }
 
-export const WEIGHT_OPTIONS = [
-  { value: "500g", label: "500g", price: 200 },
-  { value: "750g", label: "750g", price: 300 },
-  { value: "1000g", label: "1000g", price: 400 },
-] as const;
-
-export function getWeightPrice(weight: string): number {
-  return WEIGHT_OPTIONS.find((o) => o.value === weight)?.price ?? 200;
+/** @deprecated use productHasOptions */
+export function productNeedsOption(product: Pick<Product, "options">): boolean {
+  return productHasOptions(product);
 }
 
-export function formatProductPrice(product: Pick<Product, "name" | "price" | "category">): string {
-  if (productNeedsWeightOption(product)) {
-    const min = Math.min(...WEIGHT_OPTIONS.map((o) => o.price));
-    const max = Math.max(...WEIGHT_OPTIONS.map((o) => o.price));
+export function getProductOptions(product: Pick<Product, "options">): ProductOption[] {
+  return product.options ?? [];
+}
+
+export function getDefaultOptionLabel(product: Pick<Product, "options">): string {
+  const opts = getProductOptions(product);
+  return opts[0]?.label ?? "";
+}
+
+export function getOptionPrice(product: Pick<Product, "options" | "price">, label: string): number {
+  const opt = getProductOptions(product).find((o) => o.label === label);
+  if (opt) return parseFloat(opt.price);
+  return parseFloat(product.price);
+}
+
+/** @deprecated use getOptionPrice */
+export function getWeightPrice(product: Pick<Product, "options" | "price">, label: string): number {
+  return getOptionPrice(product, label);
+}
+
+export function formatProductPrice(product: Pick<Product, "options" | "price">): string {
+  const opts = getProductOptions(product);
+  if (opts.length > 0) {
+    const prices = opts.map((o) => parseFloat(o.price));
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    if (min === max) return formatPeso(min);
     return `${formatPeso(min)} – ${formatPeso(max)}`;
   }
   return formatPeso(product.price);
+}
+
+export function buildOptionString(
+  product: Pick<Product, "options" | "price">,
+  selectedLabel: string
+): string {
+  const price = getOptionPrice(product, selectedLabel);
+  return `Weight: ${selectedLabel} (${formatPeso(price)})`;
 }

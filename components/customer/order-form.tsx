@@ -5,10 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { placeOrder } from "@/actions/orders";
 import type { Product } from "@/lib/types";
 import {
+  buildOptionString,
   formatProductPrice,
-  getWeightPrice,
-  productNeedsWeightOption,
-  WEIGHT_OPTIONS,
+  getDefaultOptionLabel,
+  getProductOptions,
+  productHasOptions,
 } from "@/lib/product-options";
 import { formatPeso } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -41,8 +42,11 @@ export function OrderForm({ products }: { products: Product[] }) {
     if (!preselect) return;
     const id = parseInt(preselect, 10);
     const product = products.find((p) => p.id === id);
-    if (product && productNeedsWeightOption(product)) {
-      setWeightByProduct((prev) => ({ ...prev, [id]: prev[id] ?? "500g" }));
+    if (product && productHasOptions(product)) {
+      setWeightByProduct((prev) => ({
+        ...prev,
+        [id]: prev[id] ?? getDefaultOptionLabel(product),
+      }));
     }
   }, [preselect, products]);
 
@@ -57,17 +61,20 @@ export function OrderForm({ products }: { products: Product[] }) {
         });
         return prev.filter((x) => x !== id);
       }
-      if (productNeedsWeightOption(product)) {
-        setWeightByProduct((w) => ({ ...w, [id]: w[id] ?? "500g" }));
+      if (productHasOptions(product)) {
+        setWeightByProduct((w) => ({
+          ...w,
+          [id]: w[id] ?? getDefaultOptionLabel(product),
+        }));
       }
       return [...prev, id];
     });
   };
 
-  const buildOptionString = (product: Product) => {
-    if (!productNeedsWeightOption(product)) return null;
-    const w = weightByProduct[product.id] ?? "500g";
-    return `Weight: ${w} (${formatPeso(getWeightPrice(w))})`;
+  const buildOrderOption = (product: Product) => {
+    if (!productHasOptions(product)) return null;
+    const label = weightByProduct[product.id] ?? getDefaultOptionLabel(product);
+    return buildOptionString(product, label);
   };
 
   const saveNameAndSubmit = (submitFn: () => void) => {
@@ -120,7 +127,7 @@ export function OrderForm({ products }: { products: Product[] }) {
               return {
                 productId,
                 quantity: 1,
-                option: buildOptionString(p),
+                option: buildOrderOption(p),
               };
             }),
           });
@@ -150,7 +157,8 @@ export function OrderForm({ products }: { products: Product[] }) {
         <div className="space-y-3">
           {products.map((p) => {
             const checked = checkedIds.includes(p.id);
-            const needsWeight = productNeedsWeightOption(p);
+            const needsWeight = productHasOptions(p);
+            const productOptions = getProductOptions(p);
             return (
               <div
                 key={p.id}
@@ -170,17 +178,17 @@ export function OrderForm({ products }: { products: Product[] }) {
                   <div className="mt-3 space-y-2 border-t border-orange-100 pt-3 pl-7">
                     <p className="text-xs font-medium text-orange-800">용량 선택</p>
                     <RadioGroup
-                      value={weightByProduct[p.id] ?? "500g"}
+                      value={weightByProduct[p.id] ?? getDefaultOptionLabel(p)}
                       onValueChange={(v) =>
                         setWeightByProduct((prev) => ({ ...prev, [p.id]: v }))
                       }
                       className="space-y-1.5"
                     >
-                      {WEIGHT_OPTIONS.map((o) => (
-                        <div key={o.value} className="flex items-center gap-2">
-                          <RadioGroupItem value={o.value} id={`weight-${p.id}-${o.value}`} />
+                      {productOptions.map((o) => (
+                        <div key={o.id} className="flex items-center gap-2">
+                          <RadioGroupItem value={o.label} id={`weight-${p.id}-${o.id}`} />
                           <Label
-                            htmlFor={`weight-${p.id}-${o.value}`}
+                            htmlFor={`weight-${p.id}-${o.id}`}
                             className="text-sm font-normal"
                           >
                             {o.label} — {formatPeso(o.price)}

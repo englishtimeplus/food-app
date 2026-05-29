@@ -7,6 +7,14 @@ export type User = {
   created_at: string;
 };
 
+export type ProductOption = {
+  id: number;
+  product_id: number;
+  label: string;
+  price: string;
+  sort_order: number;
+};
+
 export type Product = {
   id: number;
   name: string;
@@ -14,6 +22,12 @@ export type Product = {
   price: string;
   category: string;
   created_at: string;
+  options?: ProductOption[];
+};
+
+export type ProductOptionInput = {
+  label: string;
+  price: number;
 };
 
 export type Order = {
