@@ -2,7 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, Package, Users, LayoutDashboard } from "lucide-react";
+import { ClipboardList, LayoutDashboard, Package, Users } from "lucide-react";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -10,39 +23,83 @@ const links = [
   { href: "/admin/orders", label: "Orders", icon: ClipboardList },
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/users", label: "Users", icon: Users },
-];
+] as const;
+
+function AdminNavItem({
+  href,
+  label,
+  icon: Icon,
+  active,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  active: boolean;
+}) {
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        render={
+          <Link
+            href={href}
+            onClick={() => {
+              if (isMobile) setOpenMobile(false);
+            }}
+          />
+        }
+        isActive={active}
+        tooltip={label}
+        className={cn(
+          active &&
+            "bg-orange-100 text-orange-800 hover:bg-orange-100 hover:text-orange-800 data-active:bg-orange-100 data-active:text-orange-800"
+        )}
+      >
+        <Icon />
+        <span>{label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
 
 export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-zinc-200 bg-white">
-      <div className="border-b p-4">
-        <Link href="/" className="text-sm text-zinc-500 hover:text-orange-600">
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="border-b border-sidebar-border">
+        <Link
+          href="/"
+          className="px-2 text-sm text-muted-foreground transition-colors hover:text-orange-600"
+        >
           ← Back to shop
         </Link>
-        <h2 className="mt-2 text-lg font-bold text-zinc-900">Admin Panel</h2>
-      </div>
-      <nav className="flex flex-1 flex-col gap-1 p-3">
-        {links.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== "/admin" && pathname.startsWith(href));
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                active
-                  ? "bg-orange-100 text-orange-800"
-                  : "text-zinc-600 hover:bg-zinc-100"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
-          );
-        })}
-      </nav>
-    </aside>
+        <p className="px-2 text-lg font-bold text-sidebar-foreground">Admin Panel</p>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {links.map(({ href, label, icon }) => {
+                const active =
+                  pathname === href || (href !== "/admin" && pathname.startsWith(href));
+                return (
+                  <AdminNavItem
+                    key={href}
+                    href={href}
+                    label={label}
+                    icon={icon}
+                    active={active}
+                  />
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarRail />
+    </Sidebar>
   );
 }
