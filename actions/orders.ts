@@ -144,6 +144,37 @@ export async function getOrdersByUserName(userName: string): Promise<OrderWithIt
   return result;
 }
 
+export type PaginatedOrdersResult = {
+  orders: OrderWithItems[];
+  hasMore: boolean;
+};
+
+export async function getOrdersByUserNamePaginated(
+  userName: string,
+  limit: number,
+  offset: number
+): Promise<PaginatedOrdersResult> {
+  const trimmed = userName.trim();
+  if (!trimmed) return { orders: [], hasMore: false };
+
+  const sql = getSql();
+  const orderRows = await sql`
+    SELECT id, user_name, created_at::text, status
+    FROM food_orders
+    WHERE user_name = ${trimmed}
+    ORDER BY created_at DESC
+    LIMIT ${limit + 1}
+    OFFSET ${offset}
+  `;
+  const hasMore = orderRows.length > limit;
+  const orders = (hasMore ? orderRows.slice(0, limit) : orderRows) as Order[];
+  const result: OrderWithItems[] = [];
+  for (const o of orders) {
+    result.push({ ...o, items: await getOrderItems(o.id) });
+  }
+  return { orders: result, hasMore };
+}
+
 export type UpdateCustomerOrderInput = {
   orderId: number;
   userName: string;

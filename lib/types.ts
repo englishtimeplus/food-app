@@ -56,4 +56,6 @@ export type CartItem = {
   price: number;
   imageUrl: string;
   quantity: number;
+  /** Selected option label when the product has options; otherwise null */
+  optionLabel: string | null;
 };

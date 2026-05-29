@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { placeOrder } from "@/actions/orders";
 import type { Product } from "@/lib/types";
+import { cartLineKey } from "@/lib/cart-line";
 import {
   buildOptionString,
   formatProductPrice,
@@ -16,14 +17,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ProductOptionPicker } from "./product-option-picker";
 import { useCart } from "./cart-context";
 import { useCustomerName } from "./customer-name-context";
+
+type OrderLine = {
+  lineKey: string;
+  productId: number;
+  quantity: number;
+  optionLabel: string | null;
+};
+
+function cartItemsToOrderLines(
+  items: { productId: number; quantity: number; optionLabel: string | null }[]
+): OrderLine[] {
+  return items.map((item) => ({
+    lineKey: cartLineKey(item.productId, item.optionLabel),
+    productId: item.productId,
+    quantity: item.quantity,
+    optionLabel: item.optionLabel,
+  }));
+}
 
 export function OrderForm({ products }: { products: Product[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselect = searchParams.get("product");
+  const fromCart = searchParams.get("from") === "cart";
   const { items: cartItems, clearCart } = useCart();
   const { customerName, setCustomerName, hydrated } = useCustomerName();
   const [pending, startTransition] = useTransition();
@@ -32,6 +52,7 @@ export function OrderForm({ products }: { products: Product[] }) {
     preselect ? [parseInt(preselect, 10)] : []
   );
   const [weightByProduct, setWeightByProduct] = useState<Record<number, string>>({});
+  const [orderLines, setOrderLines] = useState<OrderLine[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,6 +70,11 @@ export function OrderForm({ products }: { products: Product[] }) {
       }));
     }
   }, [preselect, products]);
+
+  useEffect(() => {
+    if (!fromCart || cartItems.length === 0) return;
+    setOrderLines(cartItemsToOrderLines(cartItems));
+  }, [fromCart, cartItems]);
 
   const toggleChecked = (product: Product) => {
     const id = product.id;
@@ -71,10 +97,40 @@ export function OrderForm({ products }: { products: Product[] }) {
     });
   };
 
-  const buildOrderOption = (product: Product) => {
+  const buildOrderOption = (product: Product, optionLabel: string | null) => {
     if (!productHasOptions(product)) return null;
-    const label = weightByProduct[product.id] ?? getDefaultOptionLabel(product);
+    const label = optionLabel ?? getDefaultOptionLabel(product);
     return buildOptionString(product, label);
+  };
+
+  const updateOrderLineQuantity = (lineKey: string, quantity: number) => {
+    if (quantity < 1) return;
+    setOrderLines((prev) =>
+      prev.map((line) => (line.lineKey === lineKey ? { ...line, quantity } : line))
+    );
+  };
+
+  const updateOrderLineOption = (lineKey: string, optionLabel: string) => {
+    setOrderLines((prev) => {
+      const line = prev.find((l) => l.lineKey === lineKey);
+      if (!line) return prev;
+
+      const updated: OrderLine = {
+        ...line,
+        optionLabel,
+        lineKey: cartLineKey(line.productId, optionLabel),
+      };
+      const without = prev.filter((l) => l.lineKey !== lineKey);
+      const existing = without.find((l) => l.lineKey === updated.lineKey);
+      if (existing) {
+        return without.map((l) =>
+          l.lineKey === updated.lineKey
+            ? { ...l, quantity: l.quantity + updated.quantity }
+            : l
+        );
+      }
+      return [...without, updated];
+    });
   };
 
   const saveNameAndSubmit = (submitFn: () => void) => {
@@ -87,33 +143,48 @@ export function OrderForm({ products }: { products: Product[] }) {
     submitFn();
   };
 
+  const submitOrderLines = (lines: OrderLine[]) => {
+    if (lines.length === 0) {
+      setError("Select at least one item");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        const order = await placeOrder({
+          userName: name.trim(),
+          items: lines.map((line) => {
+            const p = products.find((x) => x.id === line.productId)!;
+            return {
+              productId: line.productId,
+              quantity: line.quantity,
+              option: buildOrderOption(p, line.optionLabel),
+            };
+          }),
+        });
+        if (fromCart) clearCart();
+        router.push(`/order/success?id=${order.id}`);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to place order");
+      }
+    });
+  };
+
   const submitFromCart = () => {
     saveNameAndSubmit(() => {
       if (cartItems.length === 0) {
         setError("Your cart is empty");
         return;
       }
-      startTransition(async () => {
-        try {
-          const order = await placeOrder({
-            userName: name.trim(),
-            items: cartItems.map((i) => ({
-              productId: i.productId,
-              quantity: i.quantity,
-              option: null,
-            })),
-          });
-          clearCart();
-          router.push(`/order/success?id=${order.id}`);
-        } catch (e) {
-          setError(e instanceof Error ? e.message : "Failed to place order");
-        }
-      });
+      submitOrderLines(cartItemsToOrderLines(cartItems));
     });
   };
 
   const submitOrder = () => {
     saveNameAndSubmit(() => {
+      if (orderLines.length > 0) {
+        submitOrderLines(orderLines);
+        return;
+      }
       if (checkedIds.length === 0) {
         setError("Select at least one item");
         return;
@@ -127,7 +198,7 @@ export function OrderForm({ products }: { products: Product[] }) {
               return {
                 productId,
                 quantity: 1,
-                option: buildOrderOption(p),
+                option: buildOrderOption(p, weightByProduct[productId] ?? null),
               };
             }),
           });
@@ -139,10 +210,12 @@ export function OrderForm({ products }: { products: Product[] }) {
     });
   };
 
+  const showCartLines = orderLines.length > 0;
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <Label htmlFor="name">주문자명 *</Label>
+        <Label htmlFor="name">Customer name *</Label>
         <Input
           id="name"
           value={name}
@@ -152,63 +225,117 @@ export function OrderForm({ products }: { products: Product[] }) {
         />
       </div>
 
-      <div className="space-y-2">
-        <Label>Menu selection</Label>
-        <div className="space-y-3">
-          {products.map((p) => {
-            const checked = checkedIds.includes(p.id);
-            const needsWeight = productHasOptions(p);
-            const productOptions = getProductOptions(p);
-            return (
-              <div
-                key={p.id}
-                className={`rounded-lg border p-3 ${checked ? "border-orange-200 bg-orange-50/30" : ""}`}
-              >
-                <label className="flex cursor-pointer items-center gap-3">
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={() => toggleChecked(p)}
-                  />
-                  <div className="flex-1">
-                    <p className="font-medium">{p.name}</p>
-                    <p className="text-sm text-orange-600">{formatProductPrice(p)}</p>
+      {showCartLines && (
+        <div className="space-y-2">
+          <Label>Your selections</Label>
+          <div className="space-y-3">
+            {orderLines.map((line, index) => {
+              const p = products.find((x) => x.id === line.productId);
+              if (!p) return null;
+              const needsOption = productHasOptions(p);
+              return (
+                <div
+                  key={`${line.productId}-${index}`}
+                  className="rounded-lg border border-orange-200 bg-orange-50/30 p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{p.name}</p>
+                      <p className="text-sm text-orange-600">{formatProductPrice(p)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-7 w-7"
+                        onClick={() =>
+                          updateOrderLineQuantity(line.lineKey, line.quantity - 1)
+                        }
+                        disabled={line.quantity <= 1}
+                      >
+                        −
+                      </Button>
+                      <span className="w-6 text-center text-sm">{line.quantity}</span>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        className="h-7 w-7"
+                        onClick={() =>
+                          updateOrderLineQuantity(line.lineKey, line.quantity + 1)
+                        }
+                      >
+                        +
+                      </Button>
+                    </div>
                   </div>
-                </label>
-                {checked && needsWeight && (
-                  <div className="mt-3 space-y-2 border-t border-orange-100 pt-3 pl-7">
-                    <p className="text-xs font-medium text-orange-800">용량 선택</p>
-                    <RadioGroup
-                      value={weightByProduct[p.id] ?? getDefaultOptionLabel(p)}
-                      onValueChange={(v) =>
-                        setWeightByProduct((prev) => ({ ...prev, [p.id]: v }))
-                      }
-                      className="space-y-1.5"
-                    >
-                      {productOptions.map((o) => (
-                        <div key={o.id} className="flex items-center gap-2">
-                          <RadioGroupItem value={o.label} id={`weight-${p.id}-${o.id}`} />
-                          <Label
-                            htmlFor={`weight-${p.id}-${o.id}`}
-                            className="text-sm font-normal"
-                          >
-                            {o.label} — {formatPeso(o.price)}
-                          </Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  {needsOption && (
+                    <div className="mt-3 space-y-2 border-t border-orange-100 pt-3">
+                      <p className="text-xs font-medium text-orange-800">Select option</p>
+                      <ProductOptionPicker
+                        product={p}
+                        value={line.optionLabel ?? getDefaultOptionLabel(p)}
+                        onValueChange={(label) => updateOrderLineOption(line.lineKey, label)}
+                        idPrefix={`order-line-${line.lineKey}`}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
+
+      {!fromCart && (
+        <div className="space-y-2">
+          <Label>Menu selection</Label>
+          <div className="space-y-3">
+            {products.map((p) => {
+              const checked = checkedIds.includes(p.id);
+              const needsWeight = productHasOptions(p);
+              const productOptions = getProductOptions(p);
+              return (
+                <div
+                  key={p.id}
+                  className={`rounded-lg border p-3 ${checked ? "border-orange-200 bg-orange-50/30" : ""}`}
+                >
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => toggleChecked(p)}
+                    />
+                    <div className="flex-1">
+                      <p className="font-medium">{p.name}</p>
+                      <p className="text-sm text-orange-600">{formatProductPrice(p)}</p>
+                    </div>
+                  </label>
+                  {checked && needsWeight && (
+                    <div className="mt-3 space-y-2 border-t border-orange-100 pt-3 pl-7">
+                      <p className="text-xs font-medium text-orange-800">Select option</p>
+                      <ProductOptionPicker
+                        product={p}
+                        value={weightByProduct[p.id] ?? getDefaultOptionLabel(p)}
+                        onValueChange={(v) =>
+                          setWeightByProduct((prev) => ({ ...prev, [p.id]: v }))
+                        }
+                        idPrefix={`weight-${p.id}`}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <Button className="w-full" disabled={pending} onClick={submitOrder}>
         {pending ? "Placing order…" : "Place Order"}
       </Button>
 
-      {cartItems.length > 0 && (
+      {!fromCart && cartItems.length > 0 && (
         <div className="rounded-lg border border-dashed border-zinc-300 p-4">
           <p className="mb-2 text-sm text-zinc-600">
             Or place order from cart ({cartItems.length} item

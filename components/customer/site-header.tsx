@@ -5,6 +5,7 @@ import { UtensilsCrossed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CartSheet } from "./cart-sheet";
 import { OrderHistorySheet } from "./order-history-sheet";
+import { PendingNavLink } from "./pending-nav-link";
 import { useCustomerName } from "./customer-name-context";
 
 export function SiteHeader() {
@@ -19,12 +20,12 @@ export function SiteHeader() {
             Club Bites
           </Link>
           <div className="flex shrink-0 items-center gap-2">
-            <Link
+            <PendingNavLink
               href="/order"
               className="text-sm font-semibold text-zinc-700 hover:text-orange-600"
             >
               Order
-            </Link>
+            </PendingNavLink>
             <OrderHistorySheet />
             <CartSheet />
           </div>

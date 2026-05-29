@@ -46,25 +46,25 @@ export function CustomerNameDialog() {
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>주문자명 입력</DialogTitle>
+          <DialogTitle>Enter your name</DialogTitle>
           <DialogDescription>
-            주문 시 사용할 이름을 입력해 주세요. 다음부터 자동으로 불러옵니다.
+            Enter the name to use when placing orders. We&apos;ll remember it for next time.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2 py-2">
-          <Label htmlFor="customer-name">주문자명</Label>
+          <Label htmlFor="customer-name">Customer name</Label>
           <Input
             id="customer-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="이름을 입력하세요"
+            placeholder="Enter your name"
             autoFocus
             onKeyDown={(e) => e.key === "Enter" && handleConfirm()}
           />
         </div>
         <DialogFooter>
           <Button className="w-full" onClick={handleConfirm} disabled={!name.trim()}>
-            확인
+            Confirm
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,36 +1,55 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { Heart, Share2, ShoppingCart } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { Product } from "@/lib/types";
-import { formatPeso } from "@/lib/format";
 import {
   formatProductPrice,
-  getDefaultOptionLabel,
-  getOptionPrice,
   productHasOptions,
 } from "@/lib/product-options";
+import { AddToCartDialog, buildCartItemPayload } from "./add-to-cart-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { useCart } from "./cart-context";
+
+function OrderNowButton({ productId }: { productId: number }) {
+  return (
+    <Button size="sm" asChild>
+      <Link href={`/order?product=${productId}`}>
+        <OrderNowButtonLabel />
+      </Link>
+    </Button>
+  );
+}
+
+function OrderNowButtonLabel() {
+  const { pending } = useLinkStatus();
+
+  return (
+    <>
+      {pending ? <Spinner /> : null}
+      Order Now
+    </>
+  );
+}
 
 export function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart();
   const [liked, setLiked] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
   const hasOptions = productHasOptions(product);
-  const defaultLabel = getDefaultOptionLabel(product);
-  const price = hasOptions
-    ? getOptionPrice(product, defaultLabel)
-    : parseFloat(product.price);
 
-  const cartPayload = {
-    productId: product.id,
-    name: hasOptions ? `${product.name} (${defaultLabel})` : product.name,
-    price,
-    imageUrl: product.image_url,
+  const handleAddToCart = () => {
+    if (hasOptions) {
+      setAddDialogOpen(true);
+      return;
+    }
+    addItem(buildCartItemPayload(product, null));
+    toast.success(`${product.name} added to cart`);
   };
 
   return (
@@ -51,20 +70,11 @@ export function ProductCard({ product }: { product: Product }) {
           <p className="text-xs capitalize text-zinc-500">{product.category}</p>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              addItem(cartPayload);
-              toast.success(`${product.name} added to cart`);
-            }}
-          >
+          <Button size="sm" variant="secondary" onClick={handleAddToCart}>
             <ShoppingCart className="h-4 w-4" />
             Add to Cart
           </Button>
-          <Button size="sm" asChild>
-            <Link href={`/order?product=${product.id}`}>Order Now</Link>
-          </Button>
+          <OrderNowButton productId={product.id} />
         </div>
         <div className="flex gap-2">
           <Button
@@ -98,6 +108,17 @@ export function ProductCard({ product }: { product: Product }) {
           </Button>
         </div>
       </CardContent>
+      {hasOptions && (
+        <AddToCartDialog
+          product={product}
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          onConfirm={(item) => {
+            addItem(item);
+            toast.success(`${product.name} added to cart`);
+          }}
+        />
+      )}
     </Card>
   );
 }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { ClipboardList, Minus, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   deleteCustomerOrder,
-  getOrdersByUserName,
+  getOrdersByUserNamePaginated,
   updateCustomerOrder,
 } from "@/actions/orders";
 import { getProducts } from "@/actions/products";
@@ -28,7 +28,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { useCustomerName } from "./customer-name-context";
+
+const PAGE_SIZE = 20;
 
 type EditLine = {
   productId: number;
@@ -53,6 +56,8 @@ export function OrderHistorySheet() {
   const { customerName, hydrated, openNameDialog } = useCustomerName();
   const [open, setOpen] = useState(false);
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [pending, startTransition] = useTransition();
   const [editingOrder, setEditingOrder] = useState<OrderWithItems | null>(null);
   const [editLines, setEditLines] = useState<EditLine[]>([]);
@@ -61,10 +66,34 @@ export function OrderHistorySheet() {
   const loadOrders = useCallback(() => {
     if (!customerName.trim()) return;
     startTransition(async () => {
-      const data = await getOrdersByUserName(customerName);
+      const { orders: data, hasMore: more } = await getOrdersByUserNamePaginated(
+        customerName,
+        PAGE_SIZE,
+        0
+      );
       setOrders(data);
+      setHasMore(more);
     });
   }, [customerName]);
+
+  const loadMoreOrders = () => {
+    if (!customerName.trim() || loadingMore || pending || !hasMore) return;
+    const offset = orders.length;
+    setLoadingMore(true);
+    startTransition(async () => {
+      try {
+        const { orders: data, hasMore: more } = await getOrdersByUserNamePaginated(
+          customerName,
+          PAGE_SIZE,
+          offset
+        );
+        setOrders((prev) => [...prev, ...data]);
+        setHasMore(more);
+      } finally {
+        setLoadingMore(false);
+      }
+    });
+  };
 
   useEffect(() => {
     if (open && customerName.trim()) loadOrders();
@@ -75,12 +104,16 @@ export function OrderHistorySheet() {
       openNameDialog();
       return;
     }
+    if (!next) {
+      setOrders([]);
+      setHasMore(false);
+    }
     setOpen(next);
   };
 
   const startEdit = async (order: OrderWithItems) => {
     if (order.status !== "pending") {
-      alert("대기 중인 주문만 수정할 수 있습니다.");
+      alert("Only pending orders can be edited.");
       return;
     }
     const prods = products.length > 0 ? products : await getProducts();
@@ -111,19 +144,19 @@ export function OrderHistorySheet() {
         setEditingOrder(null);
         loadOrders();
       } catch (e) {
-        alert(e instanceof Error ? e.message : "수정 실패");
+        alert(e instanceof Error ? e.message : "Failed to update");
       }
     });
   };
 
   const handleDelete = (orderId: number) => {
-    if (!confirm("이 주문을 삭제할까요?")) return;
+    if (!confirm("Delete this order?")) return;
     startTransition(async () => {
       try {
         await deleteCustomerOrder(orderId, customerName);
         loadOrders();
       } catch (e) {
-        alert(e instanceof Error ? e.message : "삭제 실패");
+        alert(e instanceof Error ? e.message : "Failed to delete");
       }
     });
   };
@@ -132,34 +165,34 @@ export function OrderHistorySheet() {
     <>
       <Dialog open={open} onOpenChange={handleOpen}>
         <DialogTrigger asChild>
-          <Button variant="outline" size="icon" title="주문 이력">
+          <Button variant="outline" size="icon" title="Order history">
             <ClipboardList className="h-5 w-5" />
           </Button>
         </DialogTrigger>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>주문 이력</DialogTitle>
+            <DialogTitle>Order history</DialogTitle>
             {customerName && (
-              <p className="text-sm text-zinc-500">주문자: {customerName}</p>
+              <p className="text-sm text-zinc-500">Customer: {customerName}</p>
             )}
           </DialogHeader>
 
           {!customerName.trim() ? (
             <div className="space-y-3 py-6 text-center">
-              <p className="text-zinc-500">주문자명을 먼저 입력해 주세요.</p>
-              <Button onClick={openNameDialog}>주문자명 입력</Button>
+              <p className="text-zinc-500">Please enter your name first.</p>
+              <Button onClick={openNameDialog}>Enter your name</Button>
             </div>
           ) : pending && orders.length === 0 ? (
-            <p className="py-8 text-center text-zinc-500">불러오는 중…</p>
+            <p className="py-8 text-center text-zinc-500">Loading…</p>
           ) : orders.length === 0 ? (
-            <p className="py-8 text-center text-zinc-500">주문 내역이 없습니다.</p>
+            <p className="py-8 text-center text-zinc-500">No orders yet.</p>
           ) : (
             <div className="space-y-3">
               {orders.map((order) => (
                 <div key={order.id} className="rounded-lg border p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold">주문 #{order.id}</p>
+                      <p className="font-semibold">Order #{order.id}</p>
                       <p className="text-xs text-zinc-500">{formatDateTime(order.created_at)}</p>
                     </div>
                     <Badge variant={statusVariant(order.status)} className="capitalize shrink-0">
@@ -183,7 +216,7 @@ export function OrderHistorySheet() {
                       onClick={() => startEdit(order)}
                     >
                       <Pencil className="mr-1 h-3 w-3" />
-                      수정
+                      Edit
                     </Button>
                     <Button
                       size="sm"
@@ -192,11 +225,23 @@ export function OrderHistorySheet() {
                       onClick={() => handleDelete(order.id)}
                     >
                       <Trash2 className="mr-1 h-3 w-3" />
-                      삭제
+                      Delete
                     </Button>
                   </div>
                 </div>
               ))}
+              {hasMore && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={loadingMore || pending}
+                  onClick={loadMoreOrders}
+                >
+                  {loadingMore ? <Spinner className="size-4" /> : null}
+                  more+
+                </Button>
+              )}
             </div>
           )}
         </DialogContent>
@@ -205,12 +250,12 @@ export function OrderHistorySheet() {
       <Dialog open={!!editingOrder} onOpenChange={(v) => !v && setEditingOrder(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>주문 수정 #{editingOrder?.id}</DialogTitle>
+            <DialogTitle>Edit order #{editingOrder?.id}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {editLines.map((line, idx) => (
               <div key={idx} className="space-y-2 rounded-lg border p-3">
-                <Label>메뉴</Label>
+                <Label>Menu</Label>
                 <Select
                   value={line.productId.toString()}
                   onValueChange={(v) =>
@@ -232,7 +277,7 @@ export function OrderHistorySheet() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Label>수량</Label>
+                <Label>Quantity</Label>
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
@@ -264,7 +309,7 @@ export function OrderHistorySheet() {
                     <Plus className="h-3 w-3" />
                   </Button>
                 </div>
-                <Label>옵션 (선택)</Label>
+                <Label>Option (optional)</Label>
                 <Input
                   value={line.option}
                   onChange={(e) =>
@@ -272,7 +317,7 @@ export function OrderHistorySheet() {
                       prev.map((l, i) => (i === idx ? { ...l, option: e.target.value } : l))
                     )
                   }
-                  placeholder="예: Weight: 500g"
+                  placeholder="e.g. Weight: 500g"
                 />
                 {editLines.length > 1 && (
                   <Button
@@ -284,7 +329,7 @@ export function OrderHistorySheet() {
                       setEditLines((prev) => prev.filter((_, i) => i !== idx))
                     }
                   >
-                    항목 삭제
+                    Remove item
                   </Button>
                 )}
               </div>
@@ -302,14 +347,14 @@ export function OrderHistorySheet() {
                 ]);
               }}
             >
-              메뉴 추가
+              Add item
             </Button>
             <div className="flex gap-2">
               <Button className="flex-1" onClick={saveEdit} disabled={pending}>
-                저장
+                Save
               </Button>
               <Button variant="outline" className="flex-1" onClick={() => setEditingOrder(null)}>
-                취소
+                Cancel
               </Button>
             </div>
           </div>
