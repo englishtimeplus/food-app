@@ -3,6 +3,8 @@ import { CustomerNameProvider } from "@/components/customer/customer-name-contex
 import { CustomerNameDialog } from "@/components/customer/customer-name-dialog";
 import { SiteHeader } from "@/components/customer/site-header";
 
+export const dynamic = "force-dynamic";
+
 export default function ShopLayout({ children }: { children: React.ReactNode }) {
   return (
     <CustomerNameProvider>
