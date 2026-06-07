@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import Image from "next/image";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   createProduct,
   deleteProduct,
@@ -57,14 +58,22 @@ export function ProductsManager({ initialProducts }: { initialProducts: Product[
   const [category, setCategory] = useState("");
   const [optionRows, setOptionRows] = useState<OptionRow[]>([]);
 
+  const fetchProducts = useCallback(async () => {
+    const fromIso = from ? new Date(from).toISOString() : undefined;
+    const toIso = to ? new Date(`${to}T23:59:59`).toISOString() : undefined;
+    return searchProducts(query || undefined, fromIso, toIso);
+  }, [query, from, to]);
+
   const load = useCallback(() => {
     startTransition(async () => {
-      const fromIso = from ? new Date(from).toISOString() : undefined;
-      const toIso = to ? new Date(`${to}T23:59:59`).toISOString() : undefined;
-      const data = await searchProducts(query || undefined, fromIso, toIso);
-      setProducts(data);
+      try {
+        const data = await fetchProducts();
+        setProducts(data);
+      } catch {
+        toast.error("Failed to load products");
+      }
     });
-  }, [query, from, to]);
+  }, [fetchProducts]);
 
   useEffect(() => {
     const t = setTimeout(load, 300);
@@ -92,23 +101,39 @@ export function ProductsManager({ initialProducts }: { initialProducts: Product[
 
   const handleSave = () => {
     const p = parseFloat(price);
-    if (!name.trim() || !imageUrl.trim() || !category.trim() || isNaN(p)) return;
+    if (!name.trim() || !imageUrl.trim() || !category.trim() || isNaN(p)) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
     const options = parseOptions(optionRows);
+    const payload = {
+      name: name.trim(),
+      image_url: imageUrl.trim(),
+      price: p,
+      category: category.trim(),
+    };
+    const editingId = editing?.id ?? null;
+
     startTransition(async () => {
-      const payload = {
-        name: name.trim(),
-        image_url: imageUrl.trim(),
-        price: p,
-        category: category.trim(),
-      };
-      if (editing) {
-        await updateProduct(editing.id, payload, options);
-      } else {
-        await createProduct(payload, options);
+      try {
+        const saved = editingId
+          ? await updateProduct(editingId, payload, options)
+          : await createProduct(payload, options);
+
+        setProducts((prev) => {
+          if (editingId) {
+            return prev.map((item) => (item.id === saved.id ? saved : item));
+          }
+          return [saved, ...prev];
+        });
+
+        setOpen(false);
+        resetForm();
+        toast.success(editingId ? "Product updated" : "Product created");
+      } catch (error) {
+        console.error(error);
+        toast.error("Failed to save product. Check your connection and try again.");
       }
-      setOpen(false);
-      resetForm();
-      load();
     });
   };
 
@@ -230,8 +255,8 @@ export function ProductsManager({ initialProducts }: { initialProducts: Product[
                   )}
                 </div>
 
-                <Button onClick={handleSave} disabled={pending}>
-                  Save
+                <Button type="button" onClick={handleSave} disabled={pending}>
+                  {pending ? "Saving…" : "Save"}
                 </Button>
               </div>
             </DialogContent>
@@ -248,6 +273,9 @@ export function ProductsManager({ initialProducts }: { initialProducts: Product[
             <div className="p-3">
               <p className="font-semibold">{p.name}</p>
               <p className="text-orange-600">{formatProductPrice(p)}</p>
+              {(p.options?.length ?? 0) > 0 && (
+                <p className="text-xs text-zinc-500">Base price: {formatPeso(p.price)}</p>
+              )}
               {(p.options?.length ?? 0) > 0 && (
                 <ul className="mt-1 space-y-0.5 text-xs text-zinc-600">
                   {p.options!.map((o) => (

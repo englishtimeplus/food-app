@@ -1,6 +1,6 @@
 "use server";
 
-import { getSql } from "@/lib/db";
+import { getSql, withDbRetry } from "@/lib/db";
 import {
   CLUB_MENU,
   DEFAULT_WEIGHT_OPTIONS,
@@ -37,7 +37,11 @@ async function syncClubMenu() {
   `;
 }
 
-export async function ensureDatabase() {
+const globalForDbInit = globalThis as typeof globalThis & {
+  __foodAppDbInitPromise?: Promise<void>;
+};
+
+async function runEnsureDatabase() {
   const sql = getSql();
 
   await sql`
@@ -112,29 +116,16 @@ export async function ensureDatabase() {
   const currentVersion = versionRow[0]?.value ? parseInt(versionRow[0].value, 10) : 0;
   if (currentVersion !== MENU_SEED_VERSION) {
     await syncClubMenu();
-  } else {
-    await seedMissingProductOptions();
   }
 }
 
-async function seedMissingProductOptions() {
-  const sql = getSql();
-  for (const name of PRODUCTS_WITH_WEIGHT_OPTIONS) {
-    const rows = await sql`
-      SELECT p.id
-      FROM products p
-      WHERE p.name = ${name}
-        AND NOT EXISTS (SELECT 1 FROM product_options o WHERE o.product_id = p.id)
-      LIMIT 1
-    `;
-    if (rows.length === 0) continue;
-    const productId = rows[0].id as number;
-    for (let i = 0; i < DEFAULT_WEIGHT_OPTIONS.length; i++) {
-      const opt = DEFAULT_WEIGHT_OPTIONS[i];
-      await sql`
-        INSERT INTO product_options (product_id, label, price, sort_order)
-        VALUES (${productId}, ${opt.label}, ${opt.price}, ${i})
-      `;
-    }
+export async function ensureDatabase() {
+  if (!globalForDbInit.__foodAppDbInitPromise) {
+    globalForDbInit.__foodAppDbInitPromise = withDbRetry(runEnsureDatabase).catch((error) => {
+      globalForDbInit.__foodAppDbInitPromise = undefined;
+      throw error;
+    });
   }
+
+  return globalForDbInit.__foodAppDbInitPromise;
 }

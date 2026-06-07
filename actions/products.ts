@@ -35,6 +35,19 @@ function attachOptions(products: ProductRow[], optionsMap: Map<number, ProductOp
   }));
 }
 
+async function getProductById(id: number): Promise<Product | null> {
+  const sql = getSql();
+  const rows = (await sql`
+    SELECT id, name, image_url, price::text, category, created_at::text
+    FROM products
+    WHERE id = ${id}
+  `) as ProductRow[];
+  if (!rows[0]) return null;
+
+  const optionsMap = await fetchOptionsForProducts([id]);
+  return attachOptions(rows, optionsMap)[0];
+}
+
 export async function getProducts(): Promise<Product[]> {
   const sql = getSql();
   const rows = (await sql`
@@ -89,7 +102,7 @@ export async function createProduct(
     category: string;
   },
   options: ProductOptionInput[] = []
-) {
+): Promise<Product> {
   const sql = getSql();
   const rows = await sql`
     INSERT INTO products (name, image_url, price, category)
@@ -101,24 +114,35 @@ export async function createProduct(
   revalidatePath("/");
   revalidatePath("/admin/products");
   revalidatePath("/order");
+
+  const product = await getProductById(id);
+  if (!product) throw new Error("Failed to load created product");
+  return product;
 }
 
 export async function updateProduct(
   id: number,
   data: { name: string; image_url: string; price: number; category: string },
   options: ProductOptionInput[] = []
-) {
+): Promise<Product> {
   const sql = getSql();
-  await sql`
+  const rows = await sql`
     UPDATE products
     SET name = ${data.name}, image_url = ${data.image_url},
         price = ${data.price}, category = ${data.category}
     WHERE id = ${id}
+    RETURNING id
   `;
+  if (!rows[0]) throw new Error("Product not found");
+
   await saveProductOptions(id, options);
   revalidatePath("/");
   revalidatePath("/admin/products");
   revalidatePath("/order");
+
+  const product = await getProductById(id);
+  if (!product) throw new Error("Failed to load updated product");
+  return product;
 }
 
 export async function deleteProduct(id: number) {
